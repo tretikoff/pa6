@@ -1,5 +1,7 @@
 #include "common.h"
 #include "ipc.h"
+#include "ipc2.h"
+#include "banking.h"
 
 #include <unistd.h>
 #include <stdio.h>
@@ -13,26 +15,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-void close_pipes(void *self, int proc);
-//int usleep(__useconds_t usec);
-int receive_all(void *self, Message *msgs, MessageType type);
-
-void createMessageHeader(Message *msg, MessageType type);
-
-typedef struct {
-    int read;
-    int write;
-} fd;
-
-typedef struct {
-    int procCount;
-    int ***fds;
-} InputOutput;
-
-typedef struct {
-    InputOutput io;
-    local_id self;
-} SelfInputOutput;
 
 //int main(int argc, char **argv) {
 //    int proc_count;
@@ -192,6 +174,6 @@ int receive_all(void *self, Message msgs[], MessageType type) {
 void createMessageHeader(Message *msg, MessageType messageType) {
     msg->s_header.s_magic = MESSAGE_MAGIC;
     msg->s_header.s_type = messageType;
-    msg->s_header.s_local_time = time(NULL);
+//    msg->s_header.s_local_time = get_physical_time();
     msg->s_header.s_payload_len = strlen(msg->s_payload) + 1;
 }

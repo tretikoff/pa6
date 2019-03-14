@@ -1,6 +1,8 @@
 #include "banking.h"
 #include "common.h"
 #include "ipc.h"
+#include "ipc2.h"
+#include "pa2345.h"
 
 #include <unistd.h>
 #include <stdio.h>
@@ -23,18 +25,16 @@ int main(int argc, char *argv[]) {
     //bank_robbery(parent_data);
     //print_history(all);
 
-    fetch args;
+    // fetch args
     getopt(argc, argv, "p:");
     int proc_count = atoi(optarg);
     int balances[proc_count];
     for (int i = 0; i < proc_count; ++i)
         balances[i] = atoi(argv[i + 3]);
 
-//    int pids[proc_count + 1];
-//
-//    InputOutput io;
-//    io.procCount = proc_count;
-//    io.fds = (int ***) calloc((proc_count + 1), sizeof(int **));
+    InputOutput io;
+    io.procCount = proc_count;
+    io.fds = (int ***) calloc((proc_count + 1), sizeof(int **));
 //
 //    FILE *pipes_logfile = fopen(pipes_log, "a+");
 //    for (int i = 0; i <= proc_count; ++i) {
@@ -47,16 +47,18 @@ int main(int argc, char *argv[]) {
 //        }
 //    }
 //
-//    FILE *logfile;
-//    logfile = fopen(events_log, "a+");
-//
-//    int pid = 0;
-//    for (local_id i = 1; i <= proc_count; ++i) {
-//        pid = fork();
-//        if (pid == 0) {
-//            pids[i] = pid;
-//            SelfInputOutput sio = {io, i};
-//            close_pipes(&sio, i);
+    FILE *logfile;
+    logfile = fopen(events_log, "a+");
+
+    int pid = 0;
+    for (local_id i = 1; i <= proc_count; ++i) {
+        pid = fork();
+        if (pid == 0) {
+            //C Process
+            BalanceHistory history;
+            history.s_id = i;
+            SelfInputOutput sio = {io, i};
+            close_pipes(&sio, i);
 //
 //            fprintf(logfile, log_started_fmt, i, getpid(), getppid());
 //            fflush(logfile);
@@ -82,17 +84,28 @@ int main(int argc, char *argv[]) {
 //            receive_all(&sio, msgs, DONE);
 //            fprintf(logfile, log_received_all_done_fmt, i);
 //
-//            return 0;
-//        }
-//    }
-//
-//    SelfInputOutput sio = {io, 0};
-//    close_pipes(&sio, 0);
-//    Message msgs[proc_count + 1];
-//    receive_all(&sio, msgs, STARTED);
-//    fprintf(logfile, log_received_all_started_fmt, 0);
+
+
+            Message msg;
+//            msg.s_payload = history;
+            createMessageHeader(&msg, BALANCE_HISTORY);
+            send(&sio, 0, &msg);
+            return 0;
+        }
+    }
+
+    SelfInputOutput sio = {io, 0};
+    close_pipes(&sio, 0);
+    Message msgs[proc_count + 1];
+    receive_all(&sio, msgs, STARTED);
+    fprintf(logfile, log_received_all_started_fmt, 0);
+    bank_robbery()
+
+    Message msg;
+    createMessageHeader(&msg, STOP);
+    send_multicast(sio, msg);
+    receive_all(&sio, msgs, DONE);
 //    fflush(logfile);
-//    receive_all(&sio, msgs, DONE);
 //    fprintf(logfile, log_received_all_done_fmt, 0);
 //    for (int i = 0; i < sio.io.procCount; i++)
 //        wait(NULL);
