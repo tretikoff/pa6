@@ -137,6 +137,10 @@ void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
     createMessageHeader(&msg, TRANSFER);
     msg.s_header.s_payload_len = sizeof(order);
     send(parent_data, src, &msg);
+
+    Message receiveMsg;
+    receive(parent_data, src, &receiveMsg);
+    receive(parent_data, src, &receiveMsg);
 }
 
 //TODO remove
