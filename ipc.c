@@ -135,9 +135,17 @@ int receive_any(void *self, Message *msg) {
     SelfInputOutput *sio = (SelfInputOutput *) self;
     while (1) {
         for (int i = 0; i <= sio->io.procCount; ++i) {
-            if (read(sio->io.fds[i][sio->self][0], msg, sizeof msg) > 0) {
-                return 0;
+            if (i == sio->self) continue;
+
+            int fd = sio->io.fds[i][sio->self][0];
+            int sum, sum1;
+            if ((sum = read(fd, &msg->s_header, sizeof(MessageHeader))) == -1) {
+                continue;
             }
+            if (msg->s_header.s_payload_len > 0) {
+                sum1 = read(fd, msg->s_payload, msg->s_header.s_payload_len);
+            }
+            return 0;
         }
     }
 }
@@ -161,7 +169,7 @@ void close_pipes(void *self, int proc) {
 
 int receive_all(void *self, Message msgs[], MessageType type) {
     SelfInputOutput *sio = (SelfInputOutput *) self;
-    for (int i = 1; i <= sio->io.procCount; ++i) {
+    for (int i = 0; i <= sio->io.procCount; ++i) {
         if (i == sio->self) continue;
         do {
             receive(self, i, &msgs[i]);

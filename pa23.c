@@ -6,6 +6,7 @@
 
 #include <unistd.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <sys/types.h>
 #include <getopt.h>
@@ -17,7 +18,6 @@
 #include <sys/wait.h>
 
 int main(int argc, char *argv[]) {
-    //bank_robbery(parent_data);
     //print_history(all);
 
     // fetch args
@@ -72,36 +72,33 @@ int main(int argc, char *argv[]) {
 
             Message workMsg;
             while (1) {
-                receive(workMsg);
+                receive_any(&sio, &workMsg);
                 if (workMsg.s_header.s_type == DONE)
                     break;
                 if (workMsg.s_header.s_type == TRANSFER) {
-                    TransferOrder order = (TransferOrder) msg.s_payload;
+                    TransferOrder order;
+                    memcpy(&order, &workMsg.s_payload, workMsg.s_header.s_payload_len);
                     if (order.s_src == i) {
                         balances[i] -= order.s_amount;
-                        send(&sio, &msg, order.s_dst);
-                    }
-                    if (order.s_dst == i) {
+                        send(&sio, 0, &msg);
+                    } else if (order.s_dst == i) {
                         balances[i] += order.s_amount;
                         Message ackMsg;
-                        createMessageHeader(ackMsg, ACK);
-                        send(&sio, ackMsg, 0);
+                        createMessageHeader(&ackMsg, ACK);
+                        send(&sio, 0, &ackMsg);
                     }
                 }
             }
 
-//
-//            Message msg2;
-//            sprintf(msg2.s_payload, log_done_fmt, i);
-//            createMessageHeader(&msg2, DONE);
-//
-//            fprintf(logfile, log_done_fmt, i);
-//            send_multicast(&sio, &msg2);
-//
-//            receive_all(&sio, msgs, DONE);
-//            fprintf(logfile, log_received_all_done_fmt, get_physical_time(), i);
-//
+            Message msg2;
+            sprintf(msg2.s_payload, log_done_fmt, get_physical_time(), i, balances[i]);
+            createMessageHeader(&msg2, DONE);
 
+            fprintf(logfile, log_done_fmt, get_physical_time(), i, balances[i]);
+            send_multicast(&sio, &msg2);
+
+            receive_all(&sio, msgs, DONE);
+            fprintf(logfile, log_received_all_done_fmt, get_physical_time(), i);
 
 //            Message msgHistory;
 //            msg.s_payload = history;
@@ -134,10 +131,11 @@ int main(int argc, char *argv[]) {
 }
 
 void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
-    TransferOrder order = {src, dst, amount};
     Message msg;
-    sprintf(msg.s_payload, "%d%d%d", src, dst, amount);
+    TransferOrder order = {src, dst, amount};
+    memcpy(msg.s_payload, &order, sizeof(order));
     createMessageHeader(&msg, TRANSFER);
+    msg.s_header.s_payload_len = sizeof(order);
     send(parent_data, src, &msg);
 }
 
