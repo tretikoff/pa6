@@ -61,13 +61,35 @@ int main(int argc, char *argv[]) {
             Message msg;
             sprintf(msg.s_payload, log_started_fmt, get_physical_time(), i, getpid(), getppid(), balances[i]);
             createMessageHeader(&msg, STARTED);
-
             send_multicast(&sio, &msg);
 
             Message msgs[proc_count + 1];
             receive_all(&sio, msgs, STARTED);
             fprintf(logfile, log_received_all_started_fmt, get_physical_time(), i);
             fflush(logfile);
+
+            // Полезная работа
+
+            Message workMsg;
+            while (1) {
+                receive(workMsg);
+                if (workMsg.s_header.s_type == DONE)
+                    break;
+                if (workMsg.s_header.s_type == TRANSFER) {
+                    TransferOrder order = (TransferOrder) msg.s_payload;
+                    if (order.s_src == i) {
+                        balances[i] -= order.s_amount;
+                        send(&sio, &msg, order.s_dst);
+                    }
+                    if (order.s_dst == i) {
+                        balances[i] += order.s_amount;
+                        Message ackMsg;
+                        createMessageHeader(ackMsg, ACK);
+                        send(&sio, ackMsg, 0);
+                    }
+                }
+            }
+
 //
 //            Message msg2;
 //            sprintf(msg2.s_payload, log_done_fmt, i);
@@ -98,9 +120,9 @@ int main(int argc, char *argv[]) {
     int max_id = proc_count - 1;
     bank_robbery(&sio, max_id);
 
-    Message doneMsg;
-    createMessageHeader(&doneMsg, STOP);
-    send_multicast(&sio, &doneMsg);
+    Message stopMsg;
+    createMessageHeader(&stopMsg, STOP);
+    send_multicast(&sio, &stopMsg);
     receive_all(&sio, msgs, DONE);
     fflush(logfile);
     fprintf(logfile, log_received_all_done_fmt, get_physical_time(), 0);
@@ -112,7 +134,11 @@ int main(int argc, char *argv[]) {
 }
 
 void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
-    // student, please implement me
+    TransferOrder order = {src, dst, amount};
+    Message msg;
+    sprintf(msg.s_payload, "%d%d%d", src, dst, amount);
+    createMessageHeader(&msg, TRANSFER);
+    send(parent_data, src, &msg);
 }
 
 //TODO remove
