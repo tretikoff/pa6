@@ -5,6 +5,7 @@
 #include "pa2345.h"
 
 #include <unistd.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -22,7 +23,7 @@ int main(int argc, char *argv[]) {
     // fetch args
     getopt(argc, argv, "p:");
     int proc_count = atoi(optarg);
-    int balances[proc_count + 1];
+    balance_t balances[proc_count + 1];
     for (int i = 1; i <= proc_count; ++i)
         balances[i] = atoi(argv[i + 2]);
 
@@ -69,40 +70,52 @@ int main(int argc, char *argv[]) {
 
             // Полезная работа
 
-//            Message workMsg;
-//            while (1) {
-//                receive_any(&sio, &workMsg);
-//                if (workMsg.s_header.s_type == STOP)
-//                    break;
-//                if (workMsg.s_header.s_type == TRANSFER) {
-//                    TransferOrder order;
-//                    memcpy(&order, &workMsg.s_payload, workMsg.s_header.s_payload_len);
-//                    if (order.s_src == i) {
-//                        balances[i] -= order.s_amount;
-//                        send(&sio, 0, &msg);
-//                    } else if (order.s_dst == i) {
-//                        balances[i] += order.s_amount;
-//                        Message ackMsg;
-//                        createMessageHeader(&ackMsg, ACK);
-//                        send(&sio, 0, &ackMsg);
-//                    }
-//                }
-//            }
-//
-//            Message msg2;
-//            sprintf(msg2.s_payload, log_done_fmt, get_physical_time(), i, balances[i]);
-//            createMessageHeader(&msg2, DONE);
-//
-//            fprintf(logfile, log_done_fmt, get_physical_time(), i, balances[i]);
-//            send_multicast(&sio, &msg2);
-//
-//            receive_all(&sio, msgs, DONE);
-//            fprintf(logfile, log_received_all_done_fmt, get_physical_time(), i);
+            Message workMsg;
+            while (1) {
+                receive_any(&sio, &workMsg);
+                if (workMsg.s_header.s_type == STOP)
+                    break;
+                if (workMsg.s_header.s_type == TRANSFER) {
+                    TransferOrder order;
+                    memcpy(&order, &workMsg.s_payload, workMsg.s_header.s_payload_len);
+//                    printf("child argmount %d src %d dst %d", order.s_amount, order.s_src, order.s_dst);
+                    fflush(stdout);
+                    if (order.s_src == i) {
+                        balances[i] -= order.s_amount;
+                        BalanceState state = {balances[i], get_physical_time(), 0};
+                        history.s_history[history.s_history_len] = state;
+                        history.s_history_len++;
 
-//            Message msgHistory;
-//            msg.s_payload = history;
-//            createMessageHeader(&msgHistory, BALANCE_HISTORY);
-//            send(&sio, 0, &msgHistory);
+                        send(&sio, order.s_dst, &workMsg);
+                        fprintf(logfile, log_transfer_out_fmt, get_physical_time(), order.s_src, order.s_amount,
+                                order.s_dst);
+                        fflush(logfile);
+                    } else if (order.s_dst == i) {
+                        balances[i] += order.s_amount;
+                        fprintf(logfile, log_transfer_in_fmt, get_physical_time(), order.s_src, order.s_amount,
+                                order.s_dst);
+                        fflush(logfile);
+                        Message ackMsg;
+                        createMessageHeader(&ackMsg, ACK);
+                        send(&sio, 0, &ackMsg);
+                    }
+                }
+            }
+
+            Message msg2;
+            sprintf(msg2.s_payload, log_done_fmt, get_physical_time(), i, balances[i]);
+            createMessageHeader(&msg2, DONE);
+            fprintf(logfile, log_done_fmt, get_physical_time(), i, balances[i]);
+            send_multicast(&sio, &msg2);
+
+            Message done_msgs[proc_count + 1];
+            receive_all(&sio, done_msgs, DONE);
+            fprintf(logfile, log_received_all_done_fmt, get_physical_time(), i);
+
+            Message msgHistory;
+            memcpy(msg.s_payload, &history, sizeof(history));
+            createMessageHeader(&msgHistory, BALANCE_HISTORY);
+            send(&sio, 0, &msgHistory);
             return 0;
         }
     }
@@ -113,13 +126,16 @@ int main(int argc, char *argv[]) {
     receive_all(&sio, msgs, STARTED);
     fprintf(logfile, log_received_all_started_fmt, get_physical_time(), 0);
     fflush(logfile);
-//    TODO parent data
-    int max_id = proc_count - 1;
+
+    int max_id = proc_count;
     bank_robbery(&sio, max_id);
 
     Message stopMsg;
     createMessageHeader(&stopMsg, STOP);
+    stopMsg.s_header.s_payload_len = 0;
     send_multicast(&sio, &stopMsg);
+    printf("sended stop\n");
+
     receive_all(&sio, msgs, DONE);
     fflush(logfile);
     fprintf(logfile, log_received_all_done_fmt, get_physical_time(), 0);
@@ -127,24 +143,34 @@ int main(int argc, char *argv[]) {
         wait(NULL);
     fflush(logfile);
 
-    //print_history(all);
+    Message history_msgs[proc_count + 1];
+    receive_all(&sio, history_msgs, BALANCE_HISTORY);
+
+    AllHistory allHistory;
+    allHistory.s_history_len = proc_count;
+    for (int i = 0; i <= proc_count; i++) {
+        memcpy(&allHistory.s_history[i], &history_msgs[i + 1].s_payload, sizeof(BalanceHistory));
+    }
+    print_history(&allHistory);
 
     return 0;
 }
 
 void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
+//    printf("transfer %d %d\n", src, dst);
+//    fflush(stdout);
     Message msg;
     TransferOrder order = {src, dst, amount};
     memcpy(msg.s_payload, &order, sizeof(order));
     createMessageHeader(&msg, TRANSFER);
     msg.s_header.s_payload_len = sizeof(order);
     send(parent_data, src, &msg);
+    printf("transfer sended %s %d %d\n", msg.s_payload, src, dst);
+    fflush(stdout);
 
     Message receiveMsg;
-    receive(parent_data, dst, &receiveMsg);
+    while (receiveMsg.s_header.s_type != ACK)
+        receive(parent_data, dst, &receiveMsg);
+    printf("transfer received %d %d\n", src, dst);
+    fflush(stdout);
 }
-
-////TODO remove
-//timestamp_t get_physical_time() {
-//    return 1;
-//}

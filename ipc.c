@@ -4,6 +4,7 @@
 #include "banking.h"
 
 #include <unistd.h>
+#include <fcntl.h>
 #include <stdio.h>
 
 #include <sys/types.h>
@@ -115,7 +116,7 @@ int send_multicast(void *self, const Message *msg) {
 int receive(void *self, local_id from, Message *msg) {
     SelfInputOutput *sio = (SelfInputOutput *) self;
     int fd = sio->io.fds[from][sio->self][0];
-    printf("%d started\n", sio->self);
+//    printf("%d started\n", sio->self);
     while (1) {
         int sum, sum1;
         if ((sum = read(fd, &msg->s_header, sizeof(MessageHeader))) == -1) {
@@ -125,7 +126,7 @@ int receive(void *self, local_id from, Message *msg) {
         if (msg->s_header.s_payload_len > 0) {
             sum1 = read(fd, msg->s_payload, msg->s_header.s_payload_len);
         }
-        printf("%d received %s\n", sio->self, msg->s_payload);
+//        printf("%d received %s\n", sio->self, msg->s_payload);
         return 0;
     }
 }
@@ -138,12 +139,21 @@ int receive_any(void *self, Message *msg) {
 
             int fd = sio->io.fds[i][sio->self][0];
             int sum, sum1;
-            if ((sum = read(fd, &msg->s_header, sizeof(MessageHeader))) == -1) {
+            printf("receive any ready %d\n", sio->self);
+            int flags = fcntl(fd, F_GETFL, 0);
+            fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+            sum = read(fd, &msg->s_header, sizeof(MessageHeader));
+            if (sum == -1) {
+                printf("continue %d\n", sio->self);
+                fflush(stdout);
+                usleep(1000);
                 continue;
             }
             if (msg->s_header.s_payload_len > 0) {
                 sum1 = read(fd, msg->s_payload, msg->s_header.s_payload_len);
             }
+            printf("received any %d\n", sio->self);
+            fflush(stdout);
             return 0;
         }
     }
