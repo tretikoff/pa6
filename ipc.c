@@ -27,8 +27,6 @@
 //        }
 //    }
 //
-//    int pids[proc_count + 1];
-//
 //    InputOutput io;
 //    io.procCount = proc_count;
 //    io.fds = (int ***) calloc((proc_count + 1), sizeof(int **));
@@ -51,7 +49,6 @@
 //    for (local_id i = 1; i <= proc_count; ++i) {
 //        pid = fork();
 //        if (pid == 0) {
-//            pids[i] = pid;
 //            SelfInputOutput sio = {io, i};
 //            close_pipes(&sio, i);
 //
@@ -118,6 +115,7 @@ int send_multicast(void *self, const Message *msg) {
 int receive(void *self, local_id from, Message *msg) {
     SelfInputOutput *sio = (SelfInputOutput *) self;
     int fd = sio->io.fds[from][sio->self][0];
+    printf("%d started\n", sio->self);
     while (1) {
         int sum, sum1;
         if ((sum = read(fd, &msg->s_header, sizeof(MessageHeader))) == -1) {
@@ -127,6 +125,7 @@ int receive(void *self, local_id from, Message *msg) {
         if (msg->s_header.s_payload_len > 0) {
             sum1 = read(fd, msg->s_payload, msg->s_header.s_payload_len);
         }
+        printf("%d received %s\n", sio->self, msg->s_payload);
         return 0;
     }
 }
@@ -169,7 +168,7 @@ void close_pipes(void *self, int proc) {
 
 int receive_all(void *self, Message msgs[], MessageType type) {
     SelfInputOutput *sio = (SelfInputOutput *) self;
-    for (int i = 0; i <= sio->io.procCount; ++i) {
+    for (int i = 1; i <= sio->io.procCount; ++i) {
         if (i == sio->self) continue;
         do {
             receive(self, i, &msgs[i]);
@@ -182,6 +181,6 @@ int receive_all(void *self, Message msgs[], MessageType type) {
 void createMessageHeader(Message *msg, MessageType messageType) {
     msg->s_header.s_magic = MESSAGE_MAGIC;
     msg->s_header.s_type = messageType;
-//    msg->s_header.s_local_time = get_physical_time();
+    msg->s_header.s_local_time = get_physical_time();
     msg->s_header.s_payload_len = strlen(msg->s_payload) + 1;
 }

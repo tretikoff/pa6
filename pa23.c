@@ -18,7 +18,6 @@
 #include <sys/wait.h>
 
 int main(int argc, char *argv[]) {
-    //print_history(all);
 
     // fetch args
     getopt(argc, argv, "p:");
@@ -63,42 +62,42 @@ int main(int argc, char *argv[]) {
             createMessageHeader(&msg, STARTED);
             send_multicast(&sio, &msg);
 
-            Message msgs[proc_count + 1];
-            receive_all(&sio, msgs, STARTED);
+            Message start_msgs[proc_count + 1];
+            receive_all(&sio, start_msgs, STARTED);
             fprintf(logfile, log_received_all_started_fmt, get_physical_time(), i);
             fflush(logfile);
 
             // Полезная работа
 
-            Message workMsg;
-            while (1) {
-                receive_any(&sio, &workMsg);
-                if (workMsg.s_header.s_type == DONE)
-                    break;
-                if (workMsg.s_header.s_type == TRANSFER) {
-                    TransferOrder order;
-                    memcpy(&order, &workMsg.s_payload, workMsg.s_header.s_payload_len);
-                    if (order.s_src == i) {
-                        balances[i] -= order.s_amount;
-                        send(&sio, 0, &msg);
-                    } else if (order.s_dst == i) {
-                        balances[i] += order.s_amount;
-                        Message ackMsg;
-                        createMessageHeader(&ackMsg, ACK);
-                        send(&sio, 0, &ackMsg);
-                    }
-                }
-            }
-
-            Message msg2;
-            sprintf(msg2.s_payload, log_done_fmt, get_physical_time(), i, balances[i]);
-            createMessageHeader(&msg2, DONE);
-
-            fprintf(logfile, log_done_fmt, get_physical_time(), i, balances[i]);
-            send_multicast(&sio, &msg2);
-
-            receive_all(&sio, msgs, DONE);
-            fprintf(logfile, log_received_all_done_fmt, get_physical_time(), i);
+//            Message workMsg;
+//            while (1) {
+//                receive_any(&sio, &workMsg);
+//                if (workMsg.s_header.s_type == STOP)
+//                    break;
+//                if (workMsg.s_header.s_type == TRANSFER) {
+//                    TransferOrder order;
+//                    memcpy(&order, &workMsg.s_payload, workMsg.s_header.s_payload_len);
+//                    if (order.s_src == i) {
+//                        balances[i] -= order.s_amount;
+//                        send(&sio, 0, &msg);
+//                    } else if (order.s_dst == i) {
+//                        balances[i] += order.s_amount;
+//                        Message ackMsg;
+//                        createMessageHeader(&ackMsg, ACK);
+//                        send(&sio, 0, &ackMsg);
+//                    }
+//                }
+//            }
+//
+//            Message msg2;
+//            sprintf(msg2.s_payload, log_done_fmt, get_physical_time(), i, balances[i]);
+//            createMessageHeader(&msg2, DONE);
+//
+//            fprintf(logfile, log_done_fmt, get_physical_time(), i, balances[i]);
+//            send_multicast(&sio, &msg2);
+//
+//            receive_all(&sio, msgs, DONE);
+//            fprintf(logfile, log_received_all_done_fmt, get_physical_time(), i);
 
 //            Message msgHistory;
 //            msg.s_payload = history;
@@ -113,6 +112,7 @@ int main(int argc, char *argv[]) {
     Message msgs[proc_count + 1];
     receive_all(&sio, msgs, STARTED);
     fprintf(logfile, log_received_all_started_fmt, get_physical_time(), 0);
+    fflush(logfile);
 //    TODO parent data
     int max_id = proc_count - 1;
     bank_robbery(&sio, max_id);
@@ -127,6 +127,8 @@ int main(int argc, char *argv[]) {
         wait(NULL);
     fflush(logfile);
 
+    //print_history(all);
+
     return 0;
 }
 
@@ -139,11 +141,10 @@ void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
     send(parent_data, src, &msg);
 
     Message receiveMsg;
-    receive(parent_data, src, &receiveMsg);
-    receive(parent_data, src, &receiveMsg);
+    receive(parent_data, dst, &receiveMsg);
 }
 
-//TODO remove
-timestamp_t get_physical_time() {
-    return 1;
-}
+////TODO remove
+//timestamp_t get_physical_time() {
+//    return 1;
+//}

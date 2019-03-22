@@ -3,6 +3,8 @@
 
 #include "ipc.h"
 
+int usleep(__useconds_t usec);
+
 void close_pipes(void *self, int proc);
 
 //int usleep(__useconds_t usec);
