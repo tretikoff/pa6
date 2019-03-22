@@ -2,6 +2,7 @@
 #define __IFMO_DISTRIBUTED_CLASS_IPC2__H
 
 #include "ipc.h"
+#include <unistd.h>
 
 int usleep(__useconds_t usec);
 

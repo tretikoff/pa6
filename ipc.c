@@ -99,6 +99,13 @@ int send(void *self, local_id dst, const Message *msg) {
     if (sio->self == dst) {
         return -1;
     }
+//
+//    if (msg->s_header.s_type == BALANCE_HISTORY) {
+//        BalanceHistory history;
+//        memcpy(&history, msg->s_payload, sizeof(BalanceHistory));
+//        printf("sent %d\n", history.s_history[2].s_balance);
+//
+//    }
 
     write(sio->io.fds[sio->self][dst][1], msg, sizeof msg->s_header + msg->s_header.s_payload_len);
     return 0;
@@ -139,12 +146,10 @@ int receive_any(void *self, Message *msg) {
 
             int fd = sio->io.fds[i][sio->self][0];
             int sum, sum1;
-            printf("receive any ready %d\n", sio->self);
             int flags = fcntl(fd, F_GETFL, 0);
             fcntl(fd, F_SETFL, flags | O_NONBLOCK);
             sum = read(fd, &msg->s_header, sizeof(MessageHeader));
             if (sum == -1) {
-                printf("continue %d\n", sio->self);
                 fflush(stdout);
                 usleep(1000);
                 continue;
@@ -152,7 +157,6 @@ int receive_any(void *self, Message *msg) {
             if (msg->s_header.s_payload_len > 0) {
                 sum1 = read(fd, msg->s_payload, msg->s_header.s_payload_len);
             }
-            printf("received any %d\n", sio->self);
             fflush(stdout);
             return 0;
         }
