@@ -138,6 +138,26 @@ int receive(void *self, local_id from, Message *msg) {
     }
 }
 
+//int try_receive_any(void *self, Message *msg) {
+//    for (int i = 0; i <= sio->io.procCount; ++i) {
+//        if (i == sio->self) continue;
+//
+//        int fd = sio->io.fds[i][sio->self][0];
+//        int sum, sum1;
+//        int flags = fcntl(fd, F_GETFL, 0);
+//        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+//        sum = read(fd, &msg->s_header, sizeof(MessageHeader));
+//        if (sum == -1) {
+//            continue;
+//        }
+//        if (msg->s_header.s_payload_len > 0) {
+//            sum1 = read(fd, msg->s_payload, msg->s_header.s_payload_len);
+//        }
+//        fflush(stdout);
+//        return 0;
+//    }
+//}
+
 int receive_any(void *self, Message *msg) {
     SelfInputOutput *sio = (SelfInputOutput *) self;
     while (1) {
@@ -150,8 +170,6 @@ int receive_any(void *self, Message *msg) {
             fcntl(fd, F_SETFL, flags | O_NONBLOCK);
             sum = read(fd, &msg->s_header, sizeof(MessageHeader));
             if (sum == -1) {
-                fflush(stdout);
-                usleep(1000);
                 continue;
             }
             if (msg->s_header.s_payload_len > 0) {
@@ -160,6 +178,7 @@ int receive_any(void *self, Message *msg) {
             fflush(stdout);
             return 0;
         }
+        usleep(500);
     }
 }
 
