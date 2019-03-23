@@ -20,6 +20,8 @@
 
 void fill_balance(BalanceHistory *history, int currentBalance, timestamp_t currentTime);
 
+timestamp_t currentTimestamp = 0;
+
 int main(int argc, char *argv[]) {
 
     // fetch args
@@ -56,23 +58,23 @@ int main(int argc, char *argv[]) {
             //C Process
             BalanceHistory history;
             history.s_id = i;
-            BalanceState initState = {balances[i], get_physical_time(), 0};
+            BalanceState initState = {balances[i], get_lamport_time(), 0};
             history.s_history[0] = initState;
             history.s_history_len = 1;
             SelfInputOutput sio = {io, i};
             close_pipes(&sio, i);
 
-            fprintf(logfile, log_started_fmt, get_physical_time(), i, getpid(), getppid(), balances[i]);
+            fprintf(logfile, log_started_fmt, currentTimestamp, i, getpid(), getppid(), balances[i]);
             fflush(logfile);
 
             Message msg;
-            sprintf(msg.s_payload, log_started_fmt, get_physical_time(), i, getpid(), getppid(), balances[i]);
+            sprintf(msg.s_payload, log_started_fmt, currentTimestamp, i, getpid(), getppid(), balances[i]);
             createMessageHeader(&msg, STARTED);
             send_multicast(&sio, &msg);
 
             Message start_msgs[proc_count + 1];
             receive_all(&sio, start_msgs, STARTED);
-            fprintf(logfile, log_received_all_started_fmt, get_physical_time(), i);
+            fprintf(logfile, log_received_all_started_fmt, currentTimestamp, i);
             fflush(logfile);
 
             // Полезная работа
@@ -83,30 +85,33 @@ int main(int argc, char *argv[]) {
                 receive_any(&sio, &workMsg);
                 if (workMsg.s_header.s_type == STOP) {
                     Message done_msg;
-                    sprintf(done_msg.s_payload, log_done_fmt, get_physical_time(), i, balances[i]);
+                    sprintf(done_msg.s_payload, log_done_fmt, currentTimestamp, i, balances[i]);
                     createMessageHeader(&done_msg, DONE);
-                    fprintf(logfile, log_done_fmt, get_physical_time(), i, balances[i]);
+                    done_msg.s_header.s_local_time = currentTimestamp;
+
+                    fprintf(logfile, log_done_fmt, currentTimestamp, i, balances[i]);
                     send_multicast(&sio, &done_msg);
                 }
                 if (workMsg.s_header.s_type == TRANSFER) {
                     TransferOrder order;
                     memcpy(&order, &workMsg.s_payload, workMsg.s_header.s_payload_len);
                     if (order.s_src == i) {
-                        workMsg.s_header.s_local_time = get_physical_time();
+                        workMsg.s_header.s_local_time = get_lamport_time();
                         fill_balance(&history, -order.s_amount, workMsg.s_header.s_local_time);
                         send(&sio, order.s_dst, &workMsg);
-                        fprintf(logfile, log_transfer_out_fmt, get_physical_time(), order.s_src, order.s_amount,
+                        fprintf(logfile, log_transfer_out_fmt, currentTimestamp, order.s_src, order.s_amount,
                                 order.s_dst);
                         fflush(logfile);
                     } else if (order.s_dst == i) {
-                        fill_balance(&history, order.s_amount, workMsg.s_header.s_local_time);
+                        fill_balance(&history, order.s_amount, currentTimestamp - 1);
                         printf("history written %d %d\n", history.s_history[history.s_history_len - 1].s_balance,
                                history.s_history[history.s_history_len - 1].s_time);
-                        fprintf(logfile, log_transfer_in_fmt, get_physical_time(), order.s_src, order.s_amount,
+                        fprintf(logfile, log_transfer_in_fmt, currentTimestamp, order.s_src, order.s_amount,
                                 order.s_dst);
                         fflush(logfile);
                         Message ackMsg;
                         createMessageHeader(&ackMsg, ACK);
+                        ackMsg.s_header.s_local_time = currentTimestamp;
                         send(&sio, 0, &ackMsg);
                         printf("sent %d\n", i);
                         fflush(stdout);
@@ -115,15 +120,18 @@ int main(int argc, char *argv[]) {
                 if (workMsg.s_header.s_type == DONE) {
                     done++;
                     if (done == proc_count) {
-                        fill_balance(&history, 0, get_physical_time());
                         break;
                     }
                 }
+                if (workMsg.s_header.s_local_time > currentTimestamp) {
+                    currentTimestamp = workMsg.s_header.s_local_time;
+                }
             }
+            fill_balance(&history, 0, currentTimestamp);
 
 //            Message done_msgs[proc_count + 1];
 //            receive_all(&sio, done_msgs, DONE);
-//            fprintf(logfile, log_received_all_done_fmt, get_physical_time(), i);
+//            fprintf(logfile, log_received_all_done_fmt, get_lamport_time()(), i);
 //            fill_balance(&history, 0);
 
             Message historyMsg;
@@ -141,7 +149,7 @@ int main(int argc, char *argv[]) {
     close_pipes(&sio, 0);
     Message msgs[proc_count + 1];
     receive_all(&sio, msgs, STARTED);
-    fprintf(logfile, log_received_all_started_fmt, get_physical_time(), 0);
+    fprintf(logfile, log_received_all_started_fmt, currentTimestamp, 0);
     fflush(logfile);
 
     int max_id = proc_count;
@@ -149,12 +157,13 @@ int main(int argc, char *argv[]) {
 
     Message stopMsg;
     createMessageHeader(&stopMsg, STOP);
+    stopMsg.s_header.s_local_time = currentTimestamp;
     stopMsg.s_header.s_payload_len = 0;
     send_multicast(&sio, &stopMsg);
 
     receive_all(&sio, msgs, DONE);
     fflush(logfile);
-    fprintf(logfile, log_received_all_done_fmt, get_physical_time(), 0);
+    fprintf(logfile, log_received_all_done_fmt, currentTimestamp, 0);
     for (int i = 0; i < sio.io.procCount; i++)
         wait(NULL);
     fflush(logfile);
@@ -180,7 +189,10 @@ void fill_balance(BalanceHistory *history, int amount, timestamp_t current_time)
         history->s_history[t] = state;
         history->s_history_len++;
     }
-    printf("balance %d amount %d\n", history->s_history[current_time].s_balance, amount);
+
+    if (amount > 0) {
+        history->s_history[current_time].s_balance_pending_in = amount;
+    }
     history->s_history[current_time].s_balance += amount;
 }
 
@@ -189,6 +201,7 @@ void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
     TransferOrder order = {src, dst, amount};
     memcpy(msg.s_payload, &order, sizeof(order));
     createMessageHeader(&msg, TRANSFER);
+    msg.s_header.s_local_time = currentTimestamp;
     msg.s_header.s_payload_len = sizeof(order);
     send(parent_data, src, &msg);
 
@@ -196,7 +209,16 @@ void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
     ackMsg.s_header.s_type = DONE;
     while (ackMsg.s_header.s_type != ACK)
         receive(parent_data, dst, &ackMsg);
+
+    if (ackMsg.s_header.s_local_time > currentTimestamp) {
+        currentTimestamp = ackMsg.s_header.s_local_time;
+    }
     printf("received %d\n", dst);
     fflush(stdout);
     usleep(1000);
+}
+
+timestamp_t get_lamport_time() {
+    currentTimestamp++;
+    return currentTimestamp;
 }

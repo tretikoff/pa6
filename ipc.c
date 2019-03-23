@@ -214,6 +214,6 @@ int receive_all(void *self, Message msgs[], MessageType type) {
 void createMessageHeader(Message *msg, MessageType messageType) {
     msg->s_header.s_magic = MESSAGE_MAGIC;
     msg->s_header.s_type = messageType;
-    msg->s_header.s_local_time = get_physical_time();
+//    msg->s_header.s_local_time = get_physical_time();
     msg->s_header.s_payload_len = strlen(msg->s_payload) + 1;
 }

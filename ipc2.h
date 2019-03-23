@@ -8,7 +8,6 @@ int usleep(__useconds_t usec);
 
 void close_pipes(void *self, int proc);
 
-//int usleep(__useconds_t usec);
 int receive_all(void *self, Message *msgs, MessageType type);
 
 void createMessageHeader(Message *msg, MessageType type);
