@@ -74,20 +74,18 @@ int main(int argc, char *argv[]) {
             //дочерний процесс
             SelfInputOutput sio = {io, i};
             close_pipes(&sio, i);
-//
-//            fprintf(logfile, log_started_fmt, get_lamport_time(), i, getpid(), getppid(), 0);
-//            fflush(logfile);
-//
-//            Message msg;
-//            sprintf(msg.s_payload, log_started_fmt, get_lamport_time(), i, getpid(), getppid(), 0);
-//            createMessageHeader(&msg, STARTED);
-//            msg.s_header.s_payload_len = 0;
-//            send_multicast(&sio, &msg);
-//
-//            Message start_msgs[proc_count + 1];
-//            receive_all(&sio, start_msgs, STARTED);
-//            fprintf(logfile, log_received_all_started_fmt, get_lamport_time(), i);
-//            fflush(logfile);
+            fprintf(logfile, log_started_fmt, get_lamport_time(), i, getpid(), getppid(), 0);
+            fflush(logfile);
+
+            Message msg;
+            createMessageHeader(&msg, STARTED);
+            msg.s_header.s_payload_len = 0;
+            send_multicast(&sio, &msg);
+
+            Message start_msgs[proc_count + 1];
+            receive_all(&sio, start_msgs, STARTED);
+            fprintf(logfile, log_received_all_started_fmt, get_lamport_time(), i);
+            fflush(logfile);
 
             // полезная работа
             int maxIter = i * 5;
@@ -104,20 +102,23 @@ int main(int argc, char *argv[]) {
             }
 
             Message done_msg;
-            sprintf(done_msg.s_payload, log_done_fmt, get_lamport_time(), i, 0);
             createMessageHeader(&done_msg, DONE);
             done_msg.s_header.s_payload_len = 0;
 
             fprintf(logfile, log_done_fmt, get_lamport_time(), i, 0);
             fflush(logfile);
             send_multicast(&sio, &done_msg);
-            printf("%d sent done\n", i);
+//            printf("%d sent done\n", i);
 
             while (1) {
                 if (done == proc_count) break;
                 Message workMsg;
-                workMsg.s_header.s_type = STARTED;
+                workMsg.s_header.s_type = -1;
                 int sender = receive_any(&sio, &workMsg);
+
+//                printf("%d Received from %d, time %d, type %d\n", i, sender, workMsg.s_header.s_local_time,
+//                       workMsg.s_header.s_type);
+
 
                 if (workMsg.s_header.s_type == CS_RELEASE) {
                     continue;
@@ -129,25 +130,25 @@ int main(int argc, char *argv[]) {
                     send(&sio, sender, &replyMsg);
                 } else if (workMsg.s_header.s_type == DONE) {
                     done++;
-                    printf("%d Done = %d\n", i, done);
+//                    printf("%d Done = %d\n", i, done);
                 }
             }
 
-            printf("Process %d finished work\n", i);
+//            printf("Process %d finished work\n", i);
             return 0;
         }
     }
 
     SelfInputOutput sio = {io, 0};
     close_pipes(&sio, 0);
-//    Message msgs[proc_count + 1];
-//    receive_all(&sio, msgs, STARTED);
-//    fprintf(logfile, log_received_all_started_fmt, get_lamport_time(), 0);
-//    fflush(logfile);
+    Message msgs[proc_count + 1];
+    receive_all(&sio, msgs, STARTED);
+    fprintf(logfile, log_received_all_started_fmt, get_lamport_time(), 0);
+    fflush(logfile);
 
-//    receive_all(&sio, msgs, DONE);
-//    fflush(logfile);
-//    fprintf(logfile, log_received_all_done_fmt, get_lamport_time(), 0);
+    receive_all(&sio, msgs, DONE);
+    fflush(logfile);
+    fprintf(logfile, log_received_all_done_fmt, get_lamport_time(), 0);
     for (int i = 0; i < sio.io.procCount; i++)
         wait(NULL);
 
@@ -195,7 +196,7 @@ int request_cs(const void *self) {
                 return 0;
         } else if (workMsg.s_header.s_type == DONE) {
             done++;
-            printf("%d Done = %d\n", sio->self, done);
+//            printf("%d Done = %d\n", sio->self, done);
         }
     }
 }

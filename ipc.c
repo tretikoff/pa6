@@ -66,9 +66,11 @@ int receive_any(void *self, Message *msg) {
             int headerLen, payloadLen;
 
             headerLen = read(fd, &msg->s_header, sizeof(MessageHeader));
-            if (headerLen == -1) {
+            if (headerLen <= 0) {
                 continue;
             }
+//            printf("%d Received from %d payload %d, headerlen = %d\n", sio->self, i, msg->s_header.s_payload_len, headerLen);
+
             if (msg->s_header.s_payload_len > 0) {
                 printf("read");
                 payloadLen = read(fd, msg->s_payload, msg->s_header.s_payload_len);
