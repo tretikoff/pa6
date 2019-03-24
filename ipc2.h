@@ -4,6 +4,8 @@
 #include "ipc.h"
 #include <unistd.h>
 
+extern timestamp_t currentTime;
+
 int usleep(__useconds_t usec);
 
 void close_pipes(void *self, int proc);

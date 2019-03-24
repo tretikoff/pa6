@@ -30,8 +30,9 @@ int send(void *self, local_id dst, const Message *msg) {
 int send_multicast(void *self, const Message *msg) {
     SelfInputOutput *sio = (SelfInputOutput *) self;
     for (int i = 0; i <= sio->io.procCount; ++i) {
-        if (i != sio->self)
-            send(self, i, msg);
+        if (i != sio->self) {
+            write(sio->io.fds[sio->self][i][1], msg, sizeof msg->s_header + msg->s_header.s_payload_len);
+        }
     }
     return 0;
 }
@@ -39,7 +40,6 @@ int send_multicast(void *self, const Message *msg) {
 int receive(void *self, local_id from, Message *msg) {
     SelfInputOutput *sio = (SelfInputOutput *) self;
     int fd = sio->io.fds[from][sio->self][0];
-//    printf("%d started\n", sio->self);
     while (1) {
         int sum, sum1;
         if ((sum = read(fd, &msg->s_header, sizeof(MessageHeader))) == -1) {
@@ -49,7 +49,10 @@ int receive(void *self, local_id from, Message *msg) {
         if (msg->s_header.s_payload_len > 0) {
             sum1 = read(fd, msg->s_payload, msg->s_header.s_payload_len);
         }
-//        printf("%d received %s\n", sio->self, msg->s_payload);
+        if (msg->s_header.s_local_time > currentTime) {
+            currentTime = msg->s_header.s_local_time;
+        }
+        currentTime++;
         return 0;
     }
 }
@@ -63,14 +66,16 @@ int receive_any(void *self, Message *msg) {
             int fd = sio->io.fds[i][sio->self][0];
             int sum, sum1;
             sum = read(fd, &msg->s_header, sizeof(MessageHeader));
-//            if (msg->s_header.)
             if (sum == -1) {
                 continue;
             }
             if (msg->s_header.s_payload_len > 0) {
                 sum1 = read(fd, msg->s_payload, msg->s_header.s_payload_len);
             }
-            fflush(stdout);
+            if (msg->s_header.s_local_time > currentTime) {
+                currentTime = msg->s_header.s_local_time;
+            }
+            currentTime++;
             return 0;
         }
         usleep(1000);
@@ -107,8 +112,9 @@ int receive_all(void *self, Message msgs[], MessageType type) {
 }
 
 void createMessageHeader(Message *msg, MessageType messageType) {
+    currentTime++;
     msg->s_header.s_magic = MESSAGE_MAGIC;
     msg->s_header.s_type = messageType;
-//    msg->s_header.s_local_time = get_physical_time();
-//    msg->s_header.s_payload_len = strlen(msg->s_payload) + 1;
+    msg->s_header.s_local_time = get_lamport_time();
+    msg->s_header.s_payload_len = strlen(msg->s_payload) + 1;
 }

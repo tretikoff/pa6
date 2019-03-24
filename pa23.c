@@ -18,9 +18,9 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-void fill_balance(BalanceHistory *history, int amount, timestamp_t currentTime);
+void fill_balance(BalanceHistory *history, int amount, timestamp_t currentime);
 
-timestamp_t currentTimestamp = 0;
+timestamp_t currentTime = 0;
 
 int main(int argc, char *argv[]) {
 
@@ -58,13 +58,13 @@ int main(int argc, char *argv[]) {
             //C Process
             BalanceHistory history;
             history.s_id = i;
-            BalanceState initState = {balances[i], currentTimestamp, 0};
+            BalanceState initState = {balances[i], get_lamport_time(), 0};
             history.s_history[0] = initState;
             history.s_history_len = 1;
             SelfInputOutput sio = {io, i};
             close_pipes(&sio, i);
 
-            fprintf(logfile, log_started_fmt, currentTimestamp, i, getpid(), getppid(), balances[i]);
+            fprintf(logfile, log_started_fmt, get_lamport_time(), i, getpid(), getppid(), balances[i]);
             fflush(logfile);
 
             Message msg;
@@ -74,8 +74,7 @@ int main(int argc, char *argv[]) {
 
             Message start_msgs[proc_count + 1];
             receive_all(&sio, start_msgs, STARTED);
-            get_lamport_time();
-            fprintf(logfile, log_received_all_started_fmt, currentTimestamp, i);
+            fprintf(logfile, log_received_all_started_fmt, get_lamport_time(), i);
             fflush(logfile);
 
             // Полезная работа
@@ -83,9 +82,6 @@ int main(int argc, char *argv[]) {
                 Message workMsg;
                 workMsg.s_header.s_type = CS_RELEASE;
                 receive_any(&sio, &workMsg);
-                if (workMsg.s_header.s_local_time > currentTimestamp) {
-                    currentTimestamp = workMsg.s_header.s_local_time;
-                }
                 if (workMsg.s_header.s_type == STOP) {
                     break;
                 }
@@ -93,15 +89,16 @@ int main(int argc, char *argv[]) {
                     TransferOrder order;
                     memcpy(&order, &workMsg.s_payload, workMsg.s_header.s_payload_len);
                     if (order.s_src == i) {
-                        fill_balance(&history, -order.s_amount, currentTimestamp);
+                        fill_balance(&history, -order.s_amount, get_lamport_time());
+                        currentTime++;
                         workMsg.s_header.s_local_time = get_lamport_time();
                         send(&sio, order.s_dst, &workMsg);
-                        fprintf(logfile, log_transfer_out_fmt, currentTimestamp, order.s_src, order.s_amount,
+                        fprintf(logfile, log_transfer_out_fmt, get_lamport_time(), order.s_src, order.s_amount,
                                 order.s_dst);
                         fflush(logfile);
                     } else if (order.s_dst == i) {
-                        fill_balance(&history, order.s_amount, currentTimestamp);
-                        fprintf(logfile, log_transfer_in_fmt, currentTimestamp, i, order.s_amount,
+                        fill_balance(&history, order.s_amount, get_lamport_time());
+                        fprintf(logfile, log_transfer_in_fmt, get_lamport_time(), i, order.s_amount,
                                 order.s_src);
                         fflush(logfile);
                         Message ackMsg;
@@ -114,14 +111,13 @@ int main(int argc, char *argv[]) {
                 }
             }
 
-            fill_balance(&history, 0, currentTimestamp);
+            fill_balance(&history, 0, get_lamport_time());
             Message done_msg;
-            sprintf(done_msg.s_payload, log_done_fmt, currentTimestamp, i, balances[i]);
+            sprintf(done_msg.s_payload, log_done_fmt, get_lamport_time(), i, balances[i]);
             createMessageHeader(&done_msg, DONE);
-            done_msg.s_header.s_local_time = get_lamport_time();
             done_msg.s_header.s_payload_len = 0;
 
-            fprintf(logfile, log_done_fmt, currentTimestamp, i, balances[i]);
+            fprintf(logfile, log_done_fmt, get_lamport_time(), i, balances[i]);
             fflush(logfile);
             send_multicast(&sio, &done_msg);
             printf("%d sent done msg\n", i);
@@ -134,7 +130,6 @@ int main(int argc, char *argv[]) {
             memcpy(historyMsg.s_payload, &history, sizeof(BalanceHistory));
             createMessageHeader(&historyMsg, BALANCE_HISTORY);
             historyMsg.s_header.s_payload_len = sizeof(BalanceHistory);
-            historyMsg.s_header.s_local_time = get_lamport_time();
 
             send(&sio, 0, &historyMsg);
             return 0;
@@ -145,7 +140,7 @@ int main(int argc, char *argv[]) {
     close_pipes(&sio, 0);
     Message msgs[proc_count + 1];
     receive_all(&sio, msgs, STARTED);
-    fprintf(logfile, log_received_all_started_fmt, currentTimestamp, 0);
+    fprintf(logfile, log_received_all_started_fmt, get_lamport_time(), 0);
     fflush(logfile);
 
     int max_id = proc_count;
@@ -153,13 +148,12 @@ int main(int argc, char *argv[]) {
 
     Message stopMsg;
     createMessageHeader(&stopMsg, STOP);
-    stopMsg.s_header.s_local_time = get_lamport_time();
     stopMsg.s_header.s_payload_len = 0;
     send_multicast(&sio, &stopMsg);
 
     receive_all(&sio, msgs, DONE);
     fflush(logfile);
-    fprintf(logfile, log_received_all_done_fmt, currentTimestamp, 0);
+    fprintf(logfile, log_received_all_done_fmt, get_lamport_time(), 0);
     for (int i = 0; i < sio.io.procCount; i++)
         wait(NULL);
     fflush(logfile);
@@ -188,6 +182,7 @@ void fill_balance(BalanceHistory *history, int amount, timestamp_t current_time)
 
     if (amount > 0) {
         history->s_history[current_time - 1].s_balance_pending_in = amount;
+        history->s_history[current_time - 2].s_balance_pending_in = amount;
     }
     history->s_history[current_time].s_balance += amount;
 }
@@ -197,7 +192,6 @@ void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
     TransferOrder order = {src, dst, amount};
     memcpy(msg.s_payload, &order, sizeof(order));
     createMessageHeader(&msg, TRANSFER);
-    msg.s_header.s_local_time = get_lamport_time();
     msg.s_header.s_payload_len = sizeof(order);
     send(parent_data, src, &msg);
 
@@ -205,19 +199,12 @@ void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {
     ackMsg.s_header.s_type = DONE;
     while (ackMsg.s_header.s_type != ACK) {
         receive(parent_data, dst, &ackMsg);
-        printf("trying receive ack msg from %d\n", dst);
-        fflush(stdout);
     }
 
-
-    if (ackMsg.s_header.s_local_time > currentTimestamp) {
-        currentTimestamp = ackMsg.s_header.s_local_time;
-    }
     fflush(stdout);
     sleep(0);
 }
 
 timestamp_t get_lamport_time() {
-    currentTimestamp++;
-    return currentTimestamp;
+    return currentTime;
 }
