@@ -21,8 +21,8 @@
 int checkQueue(const void *self);
 
 timestamp_t currentTime = 0;
-timestamp_t MAX_TS = (timestamp_t) 21474;
 timestamp_t Qi[MAX_PROCESS_ID];
+int done = 1;
 
 int main(int argc, char *argv[]) {
 
@@ -97,11 +97,9 @@ int main(int argc, char *argv[]) {
                 if (mutexl) {
                     request_cs(&sio);
                     print(loopStr);
-//                    printf("%s\n", loopStr);
                     release_cs(&sio);
                 } else {
                     print(loopStr);
-//                    printf("%s\n", loopStr);
                 }
             }
 
@@ -113,9 +111,27 @@ int main(int argc, char *argv[]) {
             fprintf(logfile, log_done_fmt, get_lamport_time(), i, 0);
             fflush(logfile);
             send_multicast(&sio, &done_msg);
+            printf("%d sent done\n", i);
 
-            Message msgs[proc_count + 1];
-            receive_all(&sio, msgs, DONE);
+            while (1) {
+                if (done == proc_count) break;
+                Message workMsg;
+                workMsg.s_header.s_type = STARTED;
+                int sender = receive_any(&sio, &workMsg);
+
+                if (workMsg.s_header.s_type == CS_RELEASE) {
+                    continue;
+                } else if (workMsg.s_header.s_type == CS_REQUEST) {
+                    Message replyMsg;
+                    createMessageHeader(&replyMsg, CS_REPLY);
+                    replyMsg.s_header.s_local_time = MAX_TS;
+                    replyMsg.s_header.s_payload_len = 0;
+                    send(&sio, sender, &replyMsg);
+                } else if (workMsg.s_header.s_type == DONE) {
+                    done++;
+                    printf("%d Done = %d\n", i, done);
+                }
+            }
 
             printf("Process %d finished work\n", i);
             return 0;
@@ -149,31 +165,37 @@ int request_cs(const void *self) {
 
     fflush(stdout);
 
-    if (checkQueue(sio) == 0) return 0;
+//    if (checkQueue(sio) == 0) return 0;
 
     int replies = 1;
     while (1) {
         Message workMsg;
         workMsg.s_header.s_type = STARTED;
         int sender = receive_any(sio, &workMsg);
-        printf("%d Received from %d, time %d, type %d\n", sio->self, sender, workMsg.s_header.s_local_time,
-               workMsg.s_header.s_type);
+//        printf("%d Received from %d, time %d, type %d\n", sio->self, sender, workMsg.s_header.s_local_time,
+//               workMsg.s_header.s_type);
 
         if (workMsg.s_header.s_type == CS_RELEASE) {
+//            printf("%d Received release from %d\n", sio->self, sender);
             Qi[sender] = MAX_TS;
             if (checkQueue(sio) == 0) {
                 return 0;
             }
         } else if (workMsg.s_header.s_type == CS_REQUEST) {
             Qi[sender] = workMsg.s_header.s_local_time;
+//            printf("%d local time - %d");
             Message replyMsg;
             createMessageHeader(&replyMsg, CS_REPLY);
             replyMsg.s_header.s_payload_len = 0;
             send(sio, sender, &replyMsg);
+//            printf("%d sent release to %d\n", sio->self, sender);
         } else if (workMsg.s_header.s_type == CS_REPLY) {
             replies++;
             if (replies == sio->io.procCount && checkQueue(sio) == 0)
                 return 0;
+        } else if (workMsg.s_header.s_type == DONE) {
+            done++;
+            printf("%d Done = %d\n", sio->self, done);
         }
     }
 }
@@ -181,6 +203,7 @@ int request_cs(const void *self) {
 int checkQueue(const void *self) {
     SelfInputOutput *sio = (SelfInputOutput *) self;
     for (int i = 1; i <= sio->io.procCount; i++) {
+//        printf("%d Qi: 3 - %d; 4 - %d\n", sio->self, Qi[3], Qi[4]);
         if (i == sio->self) continue;
 //        printf("processes %d with time %d and %d with time %d want to go to cs\n", sio->self, Qi[sio->self], i, Qi[i]);
         if (Qi[sio->self] > Qi[i]) return i;

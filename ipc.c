@@ -49,7 +49,7 @@ int receive(void *self, local_id from, Message *msg) {
         if (msg->s_header.s_payload_len > 0) {
             payloadLen = read(fd, msg->s_payload, msg->s_header.s_payload_len);
         }
-        if (msg->s_header.s_local_time > currentTime) {
+        if (msg->s_header.s_local_time > currentTime && msg->s_header.s_local_time != MAX_TS) {
             currentTime = msg->s_header.s_local_time;
         }
         currentTime++;
@@ -73,7 +73,7 @@ int receive_any(void *self, Message *msg) {
                 printf("read");
                 payloadLen = read(fd, msg->s_payload, msg->s_header.s_payload_len);
             }
-            if (msg->s_header.s_local_time > currentTime) {
+            if (msg->s_header.s_local_time > currentTime && msg->s_header.s_local_time != MAX_TS) {
                 currentTime = msg->s_header.s_local_time;
             }
             currentTime++;

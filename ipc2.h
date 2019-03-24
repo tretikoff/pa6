@@ -5,6 +5,8 @@
 #include <unistd.h>
 
 extern timestamp_t currentTime;
+static timestamp_t MAX_TS = (timestamp_t) 21474;
+
 
 int usleep(__useconds_t usec);
 
