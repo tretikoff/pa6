@@ -17,95 +17,11 @@
 #include <sys/wait.h>
 
 
-//int main(int argc, char **argv) {
-//    int proc_count;
-//
-//    int opt = 0;
-//    while ((opt = getopt(argc, argv, "p:")) != -1) {
-//        switch (opt) {
-//            case 'p':
-//                proc_count = atoi(optarg);
-//        }
-//    }
-//
-//    InputOutput io;
-//    io.procCount = proc_count;
-//    io.fds = (int ***) calloc((proc_count + 1), sizeof(int **));
-//
-//    FILE *pipes_logfile = fopen(pipes_log, "a+");
-//    for (int i = 0; i <= proc_count; ++i) {
-//        io.fds[i] = (int **) calloc((proc_count + 1), sizeof(int *));
-//        for (int j = 0; j <= proc_count; ++j) {
-//            if (i == j) continue;
-//            io.fds[i][j] = (int *) calloc(2, sizeof(int));
-//            pipe(io.fds[i][j]);
-//            fprintf(pipes_logfile, "%d %d was opened\n", i, j);
-//        }
-//    }
-//
-//    FILE *logfile;
-//    logfile = fopen(events_log, "a+");
-//
-//    int pid = 0;
-//    for (local_id i = 1; i <= proc_count; ++i) {
-//        pid = fork();
-//        if (pid == 0) {
-//            SelfInputOutput sio = {io, i};
-//            close_pipes(&sio, i);
-//
-//            fprintf(logfile, log_started_fmt, i, getpid(), getppid());
-//            fflush(logfile);
-//
-//            Message msg;
-//            sprintf(msg.s_payload, log_started_fmt, i, getpid(), getppid());
-//            createMessageHeader(&msg, STARTED);
-//
-//            send_multicast(&sio, &msg);
-//
-//            Message msgs[proc_count + 1];
-//            receive_all(&sio, msgs, STARTED);
-//            fprintf(logfile, log_received_all_started_fmt, i);
-//            fflush(logfile);
-//
-//            Message msg2;
-//            sprintf(msg2.s_payload, log_done_fmt, i);
-//            createMessageHeader(&msg2, DONE);
-//
-//            fprintf(logfile, log_done_fmt, i);
-//            send_multicast(&sio, &msg2);
-//
-//            receive_all(&sio, msgs, DONE);
-//            fprintf(logfile, log_received_all_done_fmt, i);
-//
-//            return 0;
-//        }
-//    }
-//
-//    SelfInputOutput sio = {io, 0};
-//    close_pipes(&sio, 0);
-//    Message msgs[proc_count + 1];
-//    receive_all(&sio, msgs, STARTED);
-//    fprintf(logfile, log_received_all_started_fmt, 0);
-//    fflush(logfile);
-//    receive_all(&sio, msgs, DONE);
-//    fprintf(logfile, log_received_all_done_fmt, 0);
-//    for (int i = 0; i < sio.io.procCount; i++)
-//        wait(NULL);
-//    fflush(logfile);
-//}
-
 int send(void *self, local_id dst, const Message *msg) {
     SelfInputOutput *sio = (SelfInputOutput *) self;
     if (sio->self == dst) {
         return -1;
     }
-//
-//    if (msg->s_header.s_type == BALANCE_HISTORY) {
-//        BalanceHistory history;
-//        memcpy(&history, msg->s_payload, sizeof(BalanceHistory));
-//        printf("sent %d\n", history.s_history[2].s_balance);
-//
-//    }
 
     write(sio->io.fds[sio->self][dst][1], msg, sizeof msg->s_header + msg->s_header.s_payload_len);
     return 0;
@@ -127,7 +43,7 @@ int receive(void *self, local_id from, Message *msg) {
     while (1) {
         int sum, sum1;
         if ((sum = read(fd, &msg->s_header, sizeof(MessageHeader))) == -1) {
-            usleep(1000);
+            sleep(0);
             continue;
         }
         if (msg->s_header.s_payload_len > 0) {
@@ -138,26 +54,6 @@ int receive(void *self, local_id from, Message *msg) {
     }
 }
 
-//int try_receive_any(void *self, Message *msg) {
-//    for (int i = 0; i <= sio->io.procCount; ++i) {
-//        if (i == sio->self) continue;
-//
-//        int fd = sio->io.fds[i][sio->self][0];
-//        int sum, sum1;
-//        int flags = fcntl(fd, F_GETFL, 0);
-//        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-//        sum = read(fd, &msg->s_header, sizeof(MessageHeader));
-//        if (sum == -1) {
-//            continue;
-//        }
-//        if (msg->s_header.s_payload_len > 0) {
-//            sum1 = read(fd, msg->s_payload, msg->s_header.s_payload_len);
-//        }
-//        fflush(stdout);
-//        return 0;
-//    }
-//}
-
 int receive_any(void *self, Message *msg) {
     SelfInputOutput *sio = (SelfInputOutput *) self;
     while (1) {
@@ -166,9 +62,8 @@ int receive_any(void *self, Message *msg) {
 
             int fd = sio->io.fds[i][sio->self][0];
             int sum, sum1;
-            int flags = fcntl(fd, F_GETFL, 0);
-            fcntl(fd, F_SETFL, flags | O_NONBLOCK);
             sum = read(fd, &msg->s_header, sizeof(MessageHeader));
+//            if (msg->s_header.)
             if (sum == -1) {
                 continue;
             }
@@ -178,7 +73,7 @@ int receive_any(void *self, Message *msg) {
             fflush(stdout);
             return 0;
         }
-        usleep(500);
+        usleep(1000);
     }
 }
 
@@ -215,5 +110,5 @@ void createMessageHeader(Message *msg, MessageType messageType) {
     msg->s_header.s_magic = MESSAGE_MAGIC;
     msg->s_header.s_type = messageType;
 //    msg->s_header.s_local_time = get_physical_time();
-    msg->s_header.s_payload_len = strlen(msg->s_payload) + 1;
+//    msg->s_header.s_payload_len = strlen(msg->s_payload) + 1;
 }
