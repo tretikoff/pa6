@@ -41,13 +41,13 @@ int receive(void *self, local_id from, Message *msg) {
     SelfInputOutput *sio = (SelfInputOutput *) self;
     int fd = sio->io.fds[from][sio->self][0];
     while (1) {
-        int sum, sum1;
-        if ((sum = read(fd, &msg->s_header, sizeof(MessageHeader))) == -1) {
+        int headerLen, payloadLen;
+        if ((headerLen = read(fd, &msg->s_header, sizeof(MessageHeader))) == -1) {
             sleep(0);
             continue;
         }
         if (msg->s_header.s_payload_len > 0) {
-            sum1 = read(fd, msg->s_payload, msg->s_header.s_payload_len);
+            payloadLen = read(fd, msg->s_payload, msg->s_header.s_payload_len);
         }
         if (msg->s_header.s_local_time > currentTime) {
             currentTime = msg->s_header.s_local_time;
@@ -62,23 +62,24 @@ int receive_any(void *self, Message *msg) {
     while (1) {
         for (int i = 0; i <= sio->io.procCount; ++i) {
             if (i == sio->self) continue;
-
             int fd = sio->io.fds[i][sio->self][0];
-            int sum, sum1;
-            sum = read(fd, &msg->s_header, sizeof(MessageHeader));
-            if (sum == -1) {
+            int headerLen, payloadLen;
+
+            headerLen = read(fd, &msg->s_header, sizeof(MessageHeader));
+            if (headerLen == -1) {
                 continue;
             }
             if (msg->s_header.s_payload_len > 0) {
-                sum1 = read(fd, msg->s_payload, msg->s_header.s_payload_len);
+                printf("read");
+                payloadLen = read(fd, msg->s_payload, msg->s_header.s_payload_len);
             }
             if (msg->s_header.s_local_time > currentTime) {
                 currentTime = msg->s_header.s_local_time;
             }
             currentTime++;
-            return 0;
+            return i;
         }
-        usleep(1000);
+        sleep(0);
     }
 }
 
