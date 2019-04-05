@@ -108,17 +108,10 @@ int main(int argc, char *argv[]) {
                 char loopStr[MAX_MESSAGE_LEN];
                 sprintf(loopStr, log_loop_operation_fmt, i, pr, maxIter);
                 if (mutexl) {
-//                    if (i == 4)
-//                        printf("%d before request", i);
-//                    fflush(stdout);
 
                     request_cs(&sio);
                     print(loopStr);
-//                    printf("%s", loopStr);
-//                    fflush(stdout);
                     release_cs(&sio);
-//                    printf("%d started with proc_count %d \n", i, proc_count);
-//                    fflush(stdout);
                 } else {
                     print(loopStr);
                 }
@@ -132,8 +125,6 @@ int main(int argc, char *argv[]) {
             fflush(logfile);
             send_multicast(&sio, &done_msg);
 
-//            printf("%d finished \n", i);
-            fflush(stdout);
             while (1) {
                 if (done == proc_count) break;
                 Message workMsg;
@@ -143,23 +134,16 @@ int main(int argc, char *argv[]) {
                 if (workMsg.s_header.s_type == CS_RELEASE) {
                     continue;
                 } else if (workMsg.s_header.s_type == CS_REQUEST) {
-                    printf("%d received \n", i);
-                    fflush(stdout);
                     Message replyMsg;
                     createMessageHeader(&replyMsg, CS_REPLY);
-//                    replyMsg.s_header.s_local_time = MAX_TS;
                     replyMsg.s_header.s_payload_len = 0;
                     send(&sio, sender, &replyMsg);
-//                    printf("%d replied \n", i);
-//                    printf("%d sent reply\n", i);
                     fflush(stdout);
                 } else if (workMsg.s_header.s_type == DONE) {
                     doneArr[sender] = 1;
                     done++;
                 }
             }
-//            printf("%d doneee\n", i);
-//            fflush(stdout);
             return 0;
         }
     }
@@ -200,7 +184,6 @@ int request_cs(const void *self) {
 //                if (check_forks(sio))
 //                    break;
             }
-//            request_fork(sio);
         } else if (workMsg.s_header.s_type == CS_REQUEST) {
             reqf[sender] = 1;
             if (priorities[sender] == 0) {
@@ -221,8 +204,6 @@ int request_cs(const void *self) {
 //                break;
         } else if (workMsg.s_header.s_type == DONE) {
             doneArr[sender] = 1;
-//            printf("%d d done from %d\n", sio->self, sender);
-//            fflush(stdout);
             done++;
         }
     }
@@ -247,13 +228,10 @@ int request_fork(const void *self) {
 
 int check_forks(const void *self) {
     SelfInputOutput *sio = (SelfInputOutput *) self;
-//    if (sio->self == 4)
-//        printf("doneArr %d %d %d\n", doneArr[1], doneArr[2], doneArr[3]);
     for (int i = 1; i <= sio->io.procCount; i++) {
         if (i == sio->self) continue;
         if (forks[i] != 1 || dirty[i] == 1) {
             if (doneArr[i] == 1) continue;
-//            fflush(stdout);
             return 0;
         }
     }
@@ -273,8 +251,9 @@ int release_cs(const void *self) {
         } else if (receiveMsg.s_header.s_type == DONE) {
             doneArr[i] = 1;
             done++;
-        } else
+        } else {
             dirty[i] = 1;
+        }
 
         priorities[i] = 0;
         Message releaseMsg;
