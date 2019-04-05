@@ -126,7 +126,7 @@ int main(int argc, char *argv[]) {
             fflush(logfile);
             send_multicast(&sio, &done_msg);
 
-//            printf("%d finished \n", i);
+            printf("%d finished \n", i);
             fflush(stdout);
             while (1) {
                 if (done == proc_count) break;
@@ -144,13 +144,15 @@ int main(int argc, char *argv[]) {
                     replyMsg.s_header.s_payload_len = 0;
                     send(&sio, sender, &replyMsg);
 //                    printf("%d replied \n", i);
-                    printf("%d sent reply\n", i);
+//                    printf("%d sent reply\n", i);
                     fflush(stdout);
                 } else if (workMsg.s_header.s_type == DONE) {
                     doneArr[sender] = 1;
                     done++;
                 }
             }
+            printf("%d doneee\n", i);
+            fflush(stdout);
             return 0;
         }
     }
@@ -176,6 +178,8 @@ int request_cs(const void *self) {
 
     while (1) {
         request_fork(sio);
+        if (check_forks(sio))
+            break;
         //make request for forks
         Message workMsg;
         workMsg.s_header.s_type = -1;
@@ -234,12 +238,12 @@ int request_fork(const void *self) {
 
 int check_forks(const void *self) {
     SelfInputOutput *sio = (SelfInputOutput *) self;
+//    if (sio->self == 4)
+//        printf("doneArr %d %d %d\n", doneArr[1], doneArr[2], doneArr[3]);
     for (int i = 1; i <= sio->io.procCount; i++) {
         if (i == sio->self) continue;
         if (forks[i] != 1 || dirty[i] == 1) {
             if (doneArr[i] == 1) continue;
-//            if (sio->self == 4)
-//                printf("dirty %d %d %d\n", dirty[1], dirty[2], dirty[3]);
 //            fflush(stdout);
             return 0;
         }
