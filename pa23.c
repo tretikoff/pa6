@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <sched.h>
 #include <sys/types.h>
 #include <getopt.h>
 #include <stdlib.h>
@@ -110,9 +111,14 @@ int main(int argc, char *argv[]) {
 //                    if (i == 4)
 //                        printf("%d before request", i);
 //                    fflush(stdout);
+
                     request_cs(&sio);
                     print(loopStr);
+//                    printf("%s", loopStr);
+//                    fflush(stdout);
                     release_cs(&sio);
+//                    printf("%d started with proc_count %d \n", i, proc_count);
+//                    fflush(stdout);
                 } else {
                     print(loopStr);
                 }
@@ -126,18 +132,19 @@ int main(int argc, char *argv[]) {
             fflush(logfile);
             send_multicast(&sio, &done_msg);
 
-            printf("%d finished \n", i);
+//            printf("%d finished \n", i);
             fflush(stdout);
             while (1) {
                 if (done == proc_count) break;
                 Message workMsg;
                 workMsg.s_header.s_type = -1;
                 int sender = receive_any(&sio, &workMsg);
-//                printf("%d received \n", i);
 
                 if (workMsg.s_header.s_type == CS_RELEASE) {
                     continue;
                 } else if (workMsg.s_header.s_type == CS_REQUEST) {
+                    printf("%d received \n", i);
+                    fflush(stdout);
                     Message replyMsg;
                     createMessageHeader(&replyMsg, CS_REPLY);
 //                    replyMsg.s_header.s_local_time = MAX_TS;
@@ -151,8 +158,8 @@ int main(int argc, char *argv[]) {
                     done++;
                 }
             }
-            printf("%d doneee\n", i);
-            fflush(stdout);
+//            printf("%d doneee\n", i);
+//            fflush(stdout);
             return 0;
         }
     }
@@ -175,9 +182,9 @@ int main(int argc, char *argv[]) {
 
 int request_cs(const void *self) {
     SelfInputOutput *sio = (SelfInputOutput *) self;
+    request_fork(sio);
 
     while (1) {
-        request_fork(sio);
         if (check_forks(sio))
             break;
         //make request for forks
@@ -190,9 +197,10 @@ int request_cs(const void *self) {
             if (reqf[sender] == 0) {
                 forks[sender] = 1;
                 dirty[sender] = 0;
-                if (check_forks(sio))
-                    break;
+//                if (check_forks(sio))
+//                    break;
             }
+//            request_fork(sio);
         } else if (workMsg.s_header.s_type == CS_REQUEST) {
             reqf[sender] = 1;
             if (priorities[sender] == 0) {
@@ -203,13 +211,14 @@ int request_cs(const void *self) {
                 createMessageHeader(&replyMsg, CS_REPLY);
                 replyMsg.s_header.s_payload_len = 0;
                 send(sio, sender, &replyMsg);
+                request_fork(sio);
             }
         } else if (workMsg.s_header.s_type == CS_REPLY) {
             // Нам отправили вилку, радуемся
             forks[sender] = 1;
             dirty[sender] = 0;
-            if (check_forks(sio))
-                break;
+//            if (check_forks(sio))
+//                break;
         } else if (workMsg.s_header.s_type == DONE) {
             doneArr[sender] = 1;
 //            printf("%d d done from %d\n", sio->self, sender);
@@ -248,7 +257,6 @@ int check_forks(const void *self) {
             return 0;
         }
     }
-    fflush(stdout);
     return 1;
 }
 
