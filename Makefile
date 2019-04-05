@@ -5,8 +5,8 @@ LFLAGS=-L. -lruntime
 all: export build logsRemove
 
 export:
-    export LD_LIBRARY_PATH="/home/parallels/Desktop/Parallels\ Shared\ Folders/Home/Desktop/pa2";
-    LD_PRELOAD=/home/parallels/Desktop/Parallels\ Shared\ Folders/Home/Desktop/pa2/libruntime.so ./a.out –p 2 10 20;
+    export LD_LIBRARY_PATH="/mnt/c/Users/treti/Downloads/pa6";
+    LD_PRELOAD=/mnt/c/Users/treti/Downloads/pa6/libruntime.so ./a.out –p 2 10 20;
 
 build:
 	$(CC) $(CFLAGS) *.c $(LFLAGS)

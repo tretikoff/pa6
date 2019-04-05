@@ -20,15 +20,22 @@
 
 int checkQueue(const void *self);
 
+int check_forks(const void *self);
+
+int request_fork(const void *self);
+
 timestamp_t currentTime = 0;
-timestamp_t Qi[MAX_PROCESS_ID];
-int DR[MAX_PROCESS_ID];
+
 int done = 1;
+int doneArr[MAX_PROCESS_ID];
+int forks[MAX_PROCESS_ID];
+int dirty[MAX_PROCESS_ID];
+int reqf[MAX_PROCESS_ID];
+int priorities[MAX_PROCESS_ID];
 
 int main(int argc, char *argv[]) {
 
     // fetch args
-
     int proc_count = 0;
     int mutexl = 0;
     for (int i = 1; i < argc; i++) {
@@ -66,6 +73,21 @@ int main(int argc, char *argv[]) {
             //дочерний процесс
             SelfInputOutput sio = {io, i};
             close_pipes(&sio, i);
+            for (int j = 1; j <= proc_count; j++) {
+                if (j == i) continue;
+                doneArr[j] = 0;
+                if (i < j) {
+                    forks[j] = 1;
+                    reqf[j] = 0;
+                    dirty[j] = 1;
+                    priorities[j] = 0;
+                } else {
+                    forks[j] = 0;
+                    reqf[j] = 1;
+                    dirty[j] = 0;
+                    priorities[j] = 1;
+                }
+            }
             fprintf(logfile, log_started_fmt, get_lamport_time(), i, getpid(), getppid(), 0);
             fflush(logfile);
 
@@ -85,6 +107,9 @@ int main(int argc, char *argv[]) {
                 char loopStr[MAX_MESSAGE_LEN];
                 sprintf(loopStr, log_loop_operation_fmt, i, pr, maxIter);
                 if (mutexl) {
+//                    if (i == 4)
+//                        printf("%d before request", i);
+//                    fflush(stdout);
                     request_cs(&sio);
                     print(loopStr);
                     release_cs(&sio);
@@ -101,25 +126,31 @@ int main(int argc, char *argv[]) {
             fflush(logfile);
             send_multicast(&sio, &done_msg);
 
+//            printf("%d finished \n", i);
+            fflush(stdout);
             while (1) {
                 if (done == proc_count) break;
                 Message workMsg;
                 workMsg.s_header.s_type = -1;
                 int sender = receive_any(&sio, &workMsg);
+//                printf("%d received \n", i);
 
                 if (workMsg.s_header.s_type == CS_RELEASE) {
                     continue;
                 } else if (workMsg.s_header.s_type == CS_REQUEST) {
                     Message replyMsg;
                     createMessageHeader(&replyMsg, CS_REPLY);
-                    replyMsg.s_header.s_local_time = MAX_TS;
+//                    replyMsg.s_header.s_local_time = MAX_TS;
                     replyMsg.s_header.s_payload_len = 0;
                     send(&sio, sender, &replyMsg);
+//                    printf("%d replied \n", i);
+                    printf("%d sent reply\n", i);
+                    fflush(stdout);
                 } else if (workMsg.s_header.s_type == DONE) {
+                    doneArr[sender] = 1;
                     done++;
                 }
             }
-
             return 0;
         }
     }
@@ -143,53 +174,100 @@ int main(int argc, char *argv[]) {
 int request_cs(const void *self) {
     SelfInputOutput *sio = (SelfInputOutput *) self;
 
-    Message requestMsg;
-    createMessageHeader(&requestMsg, CS_REQUEST);
-    requestMsg.s_header.s_payload_len = 0;
-    Qi[sio->self] = requestMsg.s_header.s_local_time;
-    send_multicast(sio, &requestMsg);
-
-    fflush(stdout);
-
-    int replies = 1;
     while (1) {
+        request_fork(sio);
+        //make request for forks
         Message workMsg;
-        workMsg.s_header.s_type = STARTED;
+        workMsg.s_header.s_type = -1;
         int sender = receive_any(sio, &workMsg);
 
-        if (workMsg.s_header.s_type == CS_REQUEST) {
-            timestamp_t reqTime = workMsg.s_header.s_local_time;
-            Qi[sender] = reqTime;
-            if (reqTime < Qi[sio->self] || (reqTime == Qi[sio->self] && sender > sio->self)) {
+        if (workMsg.s_header.s_type == CS_RELEASE) {
+            priorities[sender] = 1;
+            if (reqf[sender] == 0) {
+                forks[sender] = 1;
+                dirty[sender] = 0;
+                if (check_forks(sio))
+                    break;
+            }
+        } else if (workMsg.s_header.s_type == CS_REQUEST) {
+            reqf[sender] = 1;
+            if (priorities[sender] == 0) {
+                forks[sender] = 0;
+                dirty[sender] = 0;
+                // Reply значит то, что мы отправили вилку
                 Message replyMsg;
                 createMessageHeader(&replyMsg, CS_REPLY);
                 replyMsg.s_header.s_payload_len = 0;
                 send(sio, sender, &replyMsg);
-            } else {
-                DR[sender] = 1;
             }
-
         } else if (workMsg.s_header.s_type == CS_REPLY) {
-            replies++;
-            if (replies == sio->io.procCount)
-                return 0;
+            // Нам отправили вилку, радуемся
+            forks[sender] = 1;
+            dirty[sender] = 0;
+            if (check_forks(sio))
+                break;
         } else if (workMsg.s_header.s_type == DONE) {
+            doneArr[sender] = 1;
+//            printf("%d d done from %d\n", sio->self, sender);
+//            fflush(stdout);
             done++;
         }
     }
+
+    return 0;
 }
 
+int request_fork(const void *self) {
+    SelfInputOutput *sio = (SelfInputOutput *) self;
+
+    for (int i = 1; i <= sio->io.procCount; i++) {
+        if (reqf[i] == 1) {
+            Message requestMsg;
+            createMessageHeader(&requestMsg, CS_REQUEST);
+            requestMsg.s_header.s_payload_len = 0;
+            send(sio, i, &requestMsg);
+            reqf[i] = 0;
+        }
+    }
+    return 1;
+}
+
+int check_forks(const void *self) {
+    SelfInputOutput *sio = (SelfInputOutput *) self;
+    for (int i = 1; i <= sio->io.procCount; i++) {
+        if (i == sio->self) continue;
+        if (forks[i] != 1 || dirty[i] == 1) {
+            if (doneArr[i] == 1) continue;
+//            if (sio->self == 4)
+//                printf("dirty %d %d %d\n", dirty[1], dirty[2], dirty[3]);
+//            fflush(stdout);
+            return 0;
+        }
+    }
+    fflush(stdout);
+    return 1;
+}
 
 int release_cs(const void *self) {
     SelfInputOutput *sio = (SelfInputOutput *) self;
     for (int i = 1; i <= sio->io.procCount; i++) {
-        if (DR[i] == 1) {
-            DR[i] = 0;
-            Message replyMsg;
-            createMessageHeader(&replyMsg, CS_REPLY);
-            replyMsg.s_header.s_payload_len = 0;
-            send(sio, i, &replyMsg);
-        }
+        if (i == sio->self) continue;
+        Message receiveMsg;
+        receiveMsg.s_header.s_type = -1;
+        if (receive(sio, i, &receiveMsg) && receiveMsg.s_header.s_type == CS_REQUEST) {
+            reqf[i] = 1;
+            forks[i] = 0;
+            dirty[i] = 0;
+        } else if (receiveMsg.s_header.s_type == DONE) {
+            doneArr[i] = 1;
+            done++;
+        } else
+            dirty[i] = 1;
+
+        priorities[i] = 0;
+        Message releaseMsg;
+        createMessageHeader(&releaseMsg, CS_RELEASE);
+        send(sio, i, &releaseMsg);
     }
 
     return 0;
@@ -200,3 +278,4 @@ timestamp_t get_lamport_time() {
 }
 
 void transfer(void *parent_data, local_id src, local_id dst, balance_t amount) {}
+

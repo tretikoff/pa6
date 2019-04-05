@@ -40,21 +40,15 @@ int send_multicast(void *self, const Message *msg) {
 int receive(void *self, local_id from, Message *msg) {
     SelfInputOutput *sio = (SelfInputOutput *) self;
     int fd = sio->io.fds[from][sio->self][0];
-    while (1) {
-        int headerLen, payloadLen;
-        if ((headerLen = read(fd, &msg->s_header, sizeof(MessageHeader))) == -1) {
-            sleep(0);
-            continue;
-        }
-        if (msg->s_header.s_payload_len > 0) {
-            payloadLen = read(fd, msg->s_payload, msg->s_header.s_payload_len);
-        }
-        if (msg->s_header.s_local_time > currentTime && msg->s_header.s_local_time != MAX_TS) {
-            currentTime = msg->s_header.s_local_time;
-        }
-        currentTime++;
-        return 0;
-    }
+    int headerLen, payloadLen;
+    if ((headerLen = read(fd, &msg->s_header, sizeof(MessageHeader))) == -1)
+        return -1;
+    if (msg->s_header.s_payload_len > 0)
+        payloadLen = read(fd, msg->s_payload, msg->s_header.s_payload_len);
+    if (msg->s_header.s_local_time > currentTime && msg->s_header.s_local_time != MAX_TS)
+        currentTime = msg->s_header.s_local_time;
+    currentTime++;
+    return 0;
 }
 
 int receive_any(void *self, Message *msg) {
@@ -69,10 +63,8 @@ int receive_any(void *self, Message *msg) {
             if (headerLen <= 0) {
                 continue;
             }
-//            printf("%d Received from %d payload %d, headerlen = %d\n", sio->self, i, msg->s_header.s_payload_len, headerLen);
 
             if (msg->s_header.s_payload_len > 0) {
-                printf("read");
                 payloadLen = read(fd, msg->s_payload, msg->s_header.s_payload_len);
             }
             if (msg->s_header.s_local_time > currentTime && msg->s_header.s_local_time != MAX_TS) {
@@ -107,7 +99,10 @@ int receive_all(void *self, Message msgs[], MessageType type) {
     for (int i = 1; i <= sio->io.procCount; ++i) {
         if (i == sio->self) continue;
         do {
-            receive(self, i, &msgs[i]);
+            while (1) {
+                if (receive(sio, i, &msgs[i])) break;
+                else continue;
+            }
         } while (msgs[i].s_header.s_type != type);
     }
 
